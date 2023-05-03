@@ -21,6 +21,8 @@ Range EXPANSION_1 = { 0x1f000000, 1024 * 1024 * 8 };
 Range EXPANSION_2 = { 0x1f802000, 66 };
 Range SCRATCHPAD = { 0x1f800000, 1024 };
 Range IRQ_CONTROL = { 0x1f801070, 8 };
+// TODO: check real value
+Range TIMERS = { 0x1f801100, 64 };
 
 Interconnect* initialize_interconnect(Bios* bios, Ram* ram) {
     Interconnect* intr = malloc(sizeof(Interconnect));
@@ -47,7 +49,12 @@ uint32_t intr_load32(Interconnect* intr, uint32_t addr) {
 	uint32_t offset = range_offset(RAM_RANGE, addr);
 
 	return ram_load32(intr->ram, offset);
-    }     
+    }
+
+    if(range_contains(IRQ_CONTROL, addr) == 1) {
+	printf("unhandled irq load\n");
+	return 0;
+    }
 
     printf("unhandled intr_load32 at address %x\n", addr);
     exit(1);
@@ -139,11 +146,17 @@ void intr_store16(Interconnect* intr, uint32_t addr, uint16_t v) {
 
     addr = mask_region(addr);
 
-    if (range_contains(SPU_RANGE, addr) == 1) {
+    if(range_contains(SPU_RANGE, addr) == 1) {
 	printf("unhandled write to spu register\n");
 	return;
     }
 
+    if(range_contains(TIMERS, addr) == 1) {
+	
+	printf("unhandled write to timers register\n");
+	return;
+    }
+    
     printf("unhandled store16: %x\n", addr);
     exit(1);
 }
