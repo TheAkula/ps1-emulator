@@ -16,6 +16,7 @@ typedef struct {
 
 Interconnect* initialize_interconnect(Bios* bios, Ram* ram);
 uint32_t intr_load32(Interconnect* intr, uint32_t addr);
+uint16_t intr_load16(Interconnect* intr, uint32_t addr);
 uint8_t intr_load8(Interconnect* intr, uint32_t addr);
 void intr_store32(Interconnect* intr, uint32_t addr, uint32_t v);
 void intr_store16(Interconnect* intr, uint32_t addr, uint16_t v);

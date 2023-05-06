@@ -29,6 +29,13 @@ uint32_t ram_load32(Ram* ram, uint32_t offset) {
     return b0 | ( b1 << 8 ) | ( b2 << 16 ) | ( b3 << 24);
 }
 
+uint16_t ram_load16(Ram* ram, uint32_t offset) {
+    uint16_t b0 = ram->data[offset + 0];
+    uint16_t b1 = ram->data[offset + 1];
+
+    return b0 | (b1 << 8);
+}
+
 uint8_t ram_load8(Ram* ram, uint32_t offset) {
     return ram->data[offset];
 }
@@ -38,6 +45,11 @@ void ram_store32(Ram* ram, uint32_t offset, uint32_t value) {
     ram->data[offset + 1] = (uint8_t)(value >> 8);
     ram->data[offset + 2] = (uint8_t)(value >> 16);
     ram->data[offset + 3] = (uint8_t)(value >> 24);
+}
+
+void ram_store16(Ram* ram, uint32_t offset, uint32_t value) {
+    ram->data[offset + 0] = (uint8_t)(value);
+    ram->data[offset + 1] = (uint8_t)(value >> 8);
 }
 
 void ram_store8(Ram* ram, uint32_t offset, uint8_t value) {

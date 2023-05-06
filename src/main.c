@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
     Ram* ram = initialize_ram();
     Interconnect* intr = initialize_interconnect(bios, ram);
     Cpu* cpu = initialize_cpu(intr);
-   
+
     while (1) {
 	run_next_instruction(cpu);
     }

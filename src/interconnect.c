@@ -23,6 +23,8 @@ Range SCRATCHPAD = { 0x1f800000, 1024 };
 Range IRQ_CONTROL = { 0x1f801070, 8 };
 // TODO: check real value
 Range TIMERS = { 0x1f801100, 64 };
+Range DMA = { 0x1f801080, 0x80 };
+Range GPU = {  0x1f801810, 8 };
 
 Interconnect* initialize_interconnect(Bios* bios, Ram* ram) {
     Interconnect* intr = malloc(sizeof(Interconnect));
@@ -32,11 +34,6 @@ Interconnect* initialize_interconnect(Bios* bios, Ram* ram) {
 }
 
 uint32_t intr_load32(Interconnect* intr, uint32_t addr) {
-    if(addr % 4 != 0) {
-	printf("load bus error: %x\n", addr);
-	exit(1);
-    }
-
     addr = mask_region(addr);
 
     if (range_contains(BIOS_RANGE, addr) == 1) {
@@ -52,11 +49,48 @@ uint32_t intr_load32(Interconnect* intr, uint32_t addr) {
     }
 
     if(range_contains(IRQ_CONTROL, addr) == 1) {
-	printf("unhandled irq load\n");
+	/* printf("unhandled irq load\n"); */
 	return 0;
     }
 
+    if(range_contains(DMA, addr) == 1) {
+	/* printf("unhandled dma load\n"); */
+	return 0;
+    }
+    
+    if(range_contains(GPU, addr) == 1) {
+	uint32_t offset = range_offset(GPU, addr);
+
+	if(offset == 4) {
+	    return 0x10000000;	    
+	}
+
+	return 0;
+    }
+    
     printf("unhandled intr_load32 at address %x\n", addr);
+    exit(1);
+}
+
+uint16_t intr_load16(Interconnect* intr, uint32_t addr) {    
+    addr = mask_region(addr);
+
+    if(range_contains(SPU_RANGE, addr) == 1) {
+	/* printf("unhandled spu load\n"); */
+	return 0;
+    }
+
+    if(range_contains(RAM_RANGE, addr) == 1) {
+	uint32_t offset = range_offset(RAM_RANGE, addr);
+	
+	return ram_load16(intr->ram, offset);
+    }    
+
+    if(range_contains(IRQ_CONTROL, addr) == 1) {
+	return 0;
+    }
+	
+    printf("unhandled load16: %x\n", addr);
     exit(1);
 }
 
@@ -85,11 +119,6 @@ uint8_t intr_load8(Interconnect* intr, uint32_t addr) {
 }
 
 void intr_store32(Interconnect* intr, uint32_t addr, uint32_t v) {
-    if(addr % 4 != 0) {
-	printf("store bus error: %x\n", addr);
-	exit(1);
-    }
-
     addr = mask_region(addr);
     
     // something related to RAM configuration    
@@ -130,7 +159,20 @@ void intr_store32(Interconnect* intr, uint32_t addr, uint32_t v) {
     }
 
     if(range_contains(IRQ_CONTROL, addr) == 1) {
-	printf("unhandled irq store\n");
+	/* printf("unhandled irq store\n"); */
+	return;
+    }
+
+    if(range_contains(DMA, addr) == 1) {
+	/* printf("unhandled dma store\n"); */
+	return;
+    }    
+    
+    if(range_contains(GPU, addr) == 1) {
+	return;
+    }
+
+    if(range_contains(TIMERS, addr) == 1) {
 	return;
     }
 	
@@ -139,21 +181,26 @@ void intr_store32(Interconnect* intr, uint32_t addr, uint32_t v) {
 }
 
 void intr_store16(Interconnect* intr, uint32_t addr, uint16_t v) {
-    if (addr % 2 != 0) {
-	printf("store16 bus error\n");
-	exit(1);
-    }
-
     addr = mask_region(addr);
 
     if(range_contains(SPU_RANGE, addr) == 1) {
-	printf("unhandled write to spu register\n");
+	/* printf("unhandled write to spu register\n"); */
 	return;
     }
 
     if(range_contains(TIMERS, addr) == 1) {
 	
-	printf("unhandled write to timers register\n");
+	/* printf("unhandled write to timers register\n"); */
+	return;
+    }
+
+    if(range_contains(RAM_RANGE, addr) == 1) {
+	uint32_t offset = range_offset(RAM_RANGE, addr);
+	
+	return ram_store16(intr->ram, offset, v);
+    }
+
+    if(range_contains(IRQ_CONTROL, addr) == 1) {
 	return;
     }
     
@@ -165,7 +212,7 @@ void intr_store8(Interconnect* intr, uint32_t addr, uint8_t v) {
     addr = mask_region(addr);
 
     if(range_contains(EXPANSION_2, addr) == 1) {
-	printf("unhandled store to expansion2\n");
+	/* printf("unhandled store to expansion2\n"); */
 
 	return;
     }

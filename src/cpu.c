@@ -1,9 +1,9 @@
 #include "cpu.h"
 
 void decode_and_execute(Cpu* cpu, Instruction instr) {
-    printf("instr: %x\n", instr);
+    /* printf("instr: %x\n", instr); */
     uint32_t i = instr_function(instr);
-    printf("instr opcode: %x\n", i);
+    /* printf("instr opcode: %x\n", i); */
     switch(i) {
     case 0b001111:
 	op_lui(cpu, instr);	
@@ -71,14 +71,71 @@ void decode_and_execute(Cpu* cpu, Instruction instr) {
     case 0b001011:
 	op_sltiu(cpu, instr);
 	break;
+    case 0b100101:
+	op_lhu(cpu, instr);
+	break;
+    case 0b100001:
+	op_lh(cpu, instr);
+	break;
+    case 0b001110:
+	op_xori(cpu, instr);
+	break;
+    case 0b100010:
+	op_lwl(cpu, instr);
+	break;
+    case 0b100110:
+	op_lwr(cpu, instr);
+	break;
+    case 0b010001:
+	op_cop1(cpu, instr);
+	break;
+    case 0b010010:
+	op_cop2(cpu, instr);
+	break;
+    case 0b010011:
+	op_cop3(cpu, instr);
+	break;
+    case 0b101010:
+	op_swl(cpu, instr);
+	break;
+    case 0b101110:
+	op_swr(cpu, instr);
+	break;
+    case 0b110000:
+	op_lwc0(cpu, instr);
+	break;
+    case 0b110001:
+	op_lwc1(cpu, instr);
+	break;
+    case 0b110010:
+	op_lwc2(cpu, instr);
+	break;
+    case 0b110011:
+	op_lwc3(cpu, instr);
+	break;
+    case 0b111000:
+	op_swc0(cpu, instr);	
+	break;
+    case 0b111001:
+	op_swc1(cpu, instr);	
+	break;
+    case 0b111010:
+	op_swc2(cpu, instr);	
+	break;
+    case 0b111011:
+	op_swc3(cpu, instr);	
+	break;
     default:
-	printf("unknown instruction: %x\n", i);
-	exit(1);
+	op_illegal(cpu, instr);
     }
 }
 
 uint32_t cpu_load32(Cpu* cpu, uint32_t addr) {   
     return intr_load32(cpu->intr, addr);
+}
+
+uint32_t cpu_load16(Cpu* cpu, uint32_t addr) {
+    return intr_load16(cpu->intr, addr);
 }
 
 uint8_t cpu_load8(Cpu* cpu, uint32_t addr) {
@@ -97,10 +154,18 @@ void cpu_store8(Cpu* cpu, uint32_t addr, uint8_t v) {
     intr_store8(cpu->intr, addr, v);
 }
 
-void run_next_instruction(Cpu* cpu) {    
-    Instruction instr = cpu_load32(cpu, cpu->pc);
-
+void run_next_instruction(Cpu* cpu) {        
     cpu->curr_pc = cpu->pc;
+
+    if(cpu->pc % 4 != 0) {
+	return exception(cpu, LOAD_BUS);
+    }
+
+    Instruction instr = cpu_load32(cpu, cpu->pc);
+    
+    cpu->delay_slot = cpu->branch;
+    cpu->branch = 0;
+    
     
     cpu->pc = cpu->next_pc;
     cpu->next_pc += 4;
@@ -134,6 +199,11 @@ void exception(Cpu* cpu, Exception cause) {
     
     cpu->epc = cpu->curr_pc;
 
+    if(cpu->delay_slot == 1) {
+	cpu->epc += 4;
+	cpu->cause |= 1 << 31;
+    }
+    
     cpu->pc = handler;
     cpu->next_pc = cpu->pc + 4;
 }
@@ -155,33 +225,32 @@ Cpu* initialize_cpu(Interconnect* intr) {
     cpu->hi = GARBAGE_VALUE;
     cpu->lo = GARBAGE_VALUE;
     cpu->sr = 0;
-    cpu->next_instr = 0x0;
     cpu->pc = RESET;
     cpu->next_pc = cpu->pc + 4;
     cpu->intr = intr;
     return cpu;
 }
 
-void check_overflow(uint32_t v, uint32_t ov) {    
+char check_overflow(Cpu* cpu, uint32_t v, uint32_t ov) {    
     if ((int)ov > 0 && (int)v > INT_MAX - (int)ov) {
 	printf("overflow\n");
-	exit(1);
-    }
+	exception(cpu, OVERFLOW);
+	return 1;
+    }    
     // TODO: check if this is necessary
-    /* if (sv < 0 && sv < INT_MIN - iv) { */
-    /* 	printf("%d\n", INT_MIN); */
-    /* 	printf("addi underflow %x %x %x %x %d %d\n", t, s, get_reg(cpu, s), i, sv, iv); */
+    /* if (ov < 0 && v < INT_MIN - ov) {		 */
     /* 	printf("addi underflow\n"); */
     /* 	exit(1); */
-    /* } */    
+    /* } */
+
+    return 0;
 }
 
 uint32_t get_reg(Cpu* cpu, uint32_t index) {
     return cpu->regs[index];
 }
 
-void set_reg(Cpu* cpu, uint32_t index, uint32_t v) {
-    printf("set reg %x value %x\n", index, v);
+void set_reg(Cpu* cpu, uint32_t index, uint32_t v) {    
     cpu->out[index] = v;
     cpu->out[0] = 0;
 }
@@ -189,7 +258,7 @@ void set_reg(Cpu* cpu, uint32_t index, uint32_t v) {
 void op_secondary(Cpu* cpu, Instruction instr) {
     uint32_t i = instr_subfunction(instr);
 
-    printf("secondary instr op code: %x\n", i);
+    /* printf("secondary instr op code: %x\n", i); */
     switch(i) {
     case 0b000000:
 	op_sll(cpu, instr);
@@ -242,9 +311,41 @@ void op_secondary(Cpu* cpu, Instruction instr) {
     case 0b001100:
 	op_syscall(cpu, instr);
 	break;
+    case 0b010011:
+	op_mtlo(cpu, instr);
+	break;
+    case 0b010001:
+	op_mthi(cpu, instr);
+	break;
+    case 0b000100:
+	op_sllv(cpu, instr);
+	break;
+    case 0b100111:
+	op_nor(cpu, instr);
+	break;
+    case 0b000111:
+	op_srav(cpu, instr);
+	break;
+    case 0b000110:
+	op_srlv(cpu, instr);
+	break;
+    case 0b011001:
+	op_multu(cpu, instr);
+	break;
+    case 0b100110:
+	op_xor(cpu, instr);
+	break;
+    case 0b001101:
+	op_break(cpu, instr);
+	break;
+    case 0b011000:
+	op_mult(cpu, instr);
+	break;
+    case 0b100010:
+	op_sub(cpu, instr);
+	break;    
     default:
-	printf("unknown secondary instruction: %x\n", i);
-	exit(1);
+	op_illegal(cpu, instr);
     }
 }
 
@@ -266,6 +367,7 @@ void op_bcondz(Cpu* cpu, Instruction instr) {
 	break;
     default:
 	printf("unknown bcondz instruction: %x\n", t);
+	exit(1);
     }
 }
 
@@ -290,15 +392,19 @@ void op_ori(Cpu* cpu, Instruction instr) {
 
 void op_sw(Cpu* cpu, Instruction instr) {
     if ((cpu->sr & 0x10000) != 0) {
-	printf("ignore store while cache is isolated\n");
+	/* printf("ignore store while cache is isolated\n"); */
 	return;
-    }
+    }    
     
     uint32_t i = instr_imm_se(instr);
     uint32_t t = instr_t(instr);
     uint32_t s = instr_s(instr);
     
     uint32_t addr = get_reg(cpu, s) + i;
+
+    if(addr % 4 != 0) {
+	return exception(cpu, STORE_BUS);	
+    }
     
     uint32_t v = get_reg(cpu, t);
 
@@ -328,6 +434,7 @@ void op_addiu(Cpu* cpu, Instruction instr) {
 void op_j(Cpu* cpu, Instruction instr) {
     uint32_t j = instr_imm_jump(instr) << 2;
 
+    cpu->branch = 1;
     cpu->next_pc = (cpu->pc & 0xf0000000) | j;
 }
 
@@ -376,7 +483,9 @@ void op_add(Cpu* cpu, Instruction instr) {
     uint32_t s = instr_s(instr);
     uint32_t d = instr_d(instr);
 
-    check_overflow(get_reg(cpu, t), get_reg(cpu, s));
+    if (check_overflow(cpu, get_reg(cpu, t), get_reg(cpu, s)) == 1) {
+	return;
+    }
 
     uint32_t v = get_reg(cpu, t) + get_reg(cpu, s);
     
@@ -388,12 +497,14 @@ void op_jalr(Cpu* cpu, Instruction instr) {
     uint32_t d = instr_d(instr);
 
     set_reg(cpu, d, cpu->pc);
+    cpu->branch = 1;
     cpu->next_pc = get_reg(cpu, s);    
 }
 
 void branch(Cpu* cpu, uint32_t offset) {
     uint32_t v = offset << 2;
 
+    cpu->branch = 1;
     cpu->next_pc = cpu->pc + v;
 }
 
@@ -412,7 +523,9 @@ void op_addi(Cpu* cpu, Instruction instr) {
     uint32_t s = instr_s(instr);
     uint32_t i = instr_imm_se(instr);
     
-    check_overflow(get_reg(cpu, s), i);
+    if(check_overflow(cpu, get_reg(cpu, s), i) == 1) {
+	return;
+    }
     
     uint32_t v = get_reg(cpu, s) + i;    
     
@@ -420,16 +533,21 @@ void op_addi(Cpu* cpu, Instruction instr) {
 }
 
 void op_lw(Cpu* cpu, Instruction instr) {
-    if ((cpu->sr & 0x10000) != 0) {
-	printf("ignore lw while cache is isolated\n");
+    if((cpu->sr & 0x10000) != 0) {
+	/* printf("ignore lw while cache is isolated\n"); */
 	return;
-    }
+    }    
 
     uint32_t t = instr_t(instr);
     uint32_t s = instr_s(instr);
     uint32_t i = instr_imm_se(instr);
 
     uint32_t addr = get_reg(cpu, s) + i;
+
+    if(addr % 4 != 0) {
+	return exception(cpu, LOAD_BUS);
+    }
+    
     uint32_t v = cpu_load32(cpu, addr);
 
     cpu->load[0] = t;
@@ -438,15 +556,20 @@ void op_lw(Cpu* cpu, Instruction instr) {
 
 void op_sh(Cpu* cpu, Instruction instr) {
     if ((cpu->sr & 0x10000) != 0) {
-	printf("ignore store while cache is isolated\n");
+	/* printf("ignore store while cache is isolated\n"); */
 	return;
-    }
+    }    
     
     uint32_t i = instr_imm_se(instr);
     uint32_t t = instr_t(instr);
     uint32_t s = instr_s(instr);
     
     uint32_t addr = get_reg(cpu, s) + i;    
+
+    if(addr % 2 != 0) {
+	return exception(cpu, STORE_BUS);
+    }
+
     uint32_t v = get_reg(cpu, t);
 
     cpu_store16(cpu, addr, (uint16_t)v);
@@ -456,7 +579,8 @@ void op_jal(Cpu* cpu, Instruction instr) {
     uint32_t ra = cpu->pc;
 
     set_reg(cpu, 31, ra + 4);
-    
+    cpu->branch = 1;
+	
     op_j(cpu, instr);
 }
 
@@ -472,7 +596,7 @@ void op_andi(Cpu* cpu, Instruction instr) {
 
 void op_sb(Cpu* cpu, Instruction instr) {
     if ((cpu->sr & 0x10000) != 0) {
-	printf("ignore store while cache is isolated\n");
+	/* printf("ignore store while cache is isolated\n"); */
 	return;
     }
 
@@ -489,6 +613,7 @@ void op_sb(Cpu* cpu, Instruction instr) {
 void op_jr(Cpu* cpu, Instruction instr) {
     uint32_t s = instr_s(instr);
 
+    cpu->branch = 1;
     cpu->next_pc = get_reg(cpu, s);
 }
 
@@ -663,6 +788,174 @@ void op_sltiu(Cpu* cpu, Instruction instr) {
     set_reg(cpu, t, v);
 }
 
+void op_lhu(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t i = instr_imm_se(instr);
+
+    uint32_t addr = get_reg(cpu, s) + i;
+
+    if(addr % 2 != 0) {
+	return exception(cpu, LOAD_BUS);
+    }
+    
+    uint32_t v = cpu_load16(cpu, addr);
+
+    set_reg(cpu, t, v);
+}
+
+void op_xori(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t i = instr_imm(instr);
+
+    uint32_t v = get_reg(cpu, s) ^ i;
+
+    set_reg(cpu, t, v);
+}
+
+void op_lwl(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t i = instr_imm_se(instr);
+
+    uint32_t addr = get_reg(cpu, s) + i;
+
+    uint32_t cur_v = cpu->out[t];
+
+    uint32_t aligned_addr = addr & ~3;
+    uint32_t aligned_word = cpu_load32(cpu, aligned_addr);
+
+    uint32_t v;
+
+    switch(addr & 3) {
+    case 0:
+	v = (cur_v & 0x00ffffff) | (aligned_word << 24);
+	break;
+    case 1:
+	v = (cur_v & 0x0000ffff) | (aligned_word << 16);
+	break;
+    case 2:
+	v = (cur_v & 0x000000ff) | (aligned_word << 8);
+	break;
+    case 3:
+	v = (cur_v & 0x00000000) | (aligned_word << 0);
+	break;
+    default:
+	printf("unknown lwl addr: %x\n", addr & 3);
+	exit(1);
+    }
+
+    cpu->load[0] = t;
+    cpu->load[1] = v;
+}
+
+void op_lwr(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t i = instr_imm_se(instr);
+
+    uint32_t addr = get_reg(cpu, s) + i;
+
+    uint32_t cur_v = cpu->out[t];
+
+    uint32_t aligned_addr = addr & ~3;
+    uint32_t aligned_word = cpu_load32(cpu, aligned_addr);
+
+    uint32_t v;
+
+    switch(addr & 3) {
+    case 0:
+	v = (cur_v & 0x00000000) | (aligned_word >> 0);
+	break;
+    case 1:
+	v = (cur_v & 0xff000000) | (aligned_word >> 8);
+	break;
+    case 2:
+	v = (cur_v & 0xffff0000) | (aligned_word >> 16);
+	break;
+    case 3:
+	v = (cur_v & 0xffffff00) | (aligned_word >> 24);
+	break;
+    default:
+	printf("unknown lwr addr: %x\n", addr & 3);
+	exit(1);
+    }
+
+    cpu->load[0] = t;
+    cpu->load[1] = v;
+}
+
+void op_swl(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t i = instr_imm_se(instr);
+
+    uint32_t addr = get_reg(cpu, s) + i;
+    uint32_t v = get_reg(cpu, t);
+
+    uint32_t aligned_addr = addr & ~3;        
+    uint32_t cur_v = cpu_load32(cpu, aligned_addr);
+
+    uint32_t word;
+    switch(addr & 3) {
+    case 0:
+	word = (cur_v & 0xffffff00) | (v >> 24);
+	break;
+    case 1:
+	word = (cur_v & 0xffff0000) | (v >> 16);
+	break;
+    case 2:
+	word = (cur_v & 0xff000000) | (v >> 8);
+	break;
+    case 3:
+	word = (cur_v & 0x00000000) | (v >> 0);
+	break;
+    default:
+	printf("unknown swl addr: %x\n", addr & 3);
+	exit(1);
+    }
+
+    cpu_store32(cpu, aligned_addr, word);
+}
+
+void op_swr(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t i = instr_imm_se(instr);
+
+    uint32_t addr = get_reg(cpu, s) + i;
+    uint32_t v = get_reg(cpu, t);
+
+    uint32_t aligned_addr = addr & ~3;        
+    uint32_t cur_v = cpu_load32(cpu, aligned_addr);
+
+    uint32_t word;
+    switch(addr & 3) {
+    case 0:
+	word = (cur_v & 0x00000000) | (v << 0);
+	break;
+    case 1:
+	word = (cur_v & 0x000000ff) | (v << 8);
+	break;
+    case 2:
+	word = (cur_v & 0x0000ffff) | (v << 16);
+	break;
+    case 3:
+	word = (cur_v & 0x00ffffff) | (v << 24);
+	break;
+    default:
+	printf("unknown swr addr: %x\n", addr & 3);
+	exit(1);
+    }
+
+    cpu_store32(cpu, aligned_addr, word);
+}
+
+void op_illegal(Cpu* cpu, Instruction instr) {
+    exception(cpu, ILLEGAL);
+}
+
 void op_divu(Cpu* cpu, Instruction instr) {
     uint32_t s = instr_s(instr);
     uint32_t t = instr_t(instr);
@@ -699,20 +992,166 @@ void op_syscall(Cpu* cpu, Instruction instr) {
     exception(cpu, SYSCALL);
 }
 
+void op_mtlo(Cpu* cpu, Instruction instr) {
+    uint32_t s = instr_s(instr);
+    
+    cpu->lo = get_reg(cpu, s);
+}
+
+void op_mthi(Cpu* cpu, Instruction instr) {
+    uint32_t s = instr_s(instr);
+
+    cpu->hi = get_reg(cpu, s);
+}
+
+void op_rfe(Cpu* cpu, Instruction instr) {
+    uint32_t mode = cpu->sr & 0x3f;
+
+    cpu->sr &= 0x3f;
+    cpu->sr |= mode >> 2;
+}
+
+void op_sllv(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t d = instr_d(instr);
+
+    uint32_t v = get_reg(cpu, t) << (get_reg(cpu, s) & 0x1f);
+
+    set_reg(cpu, d, v);
+}
+
+void op_lh(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t i = instr_imm_se(instr);
+
+    uint32_t addr = get_reg(cpu, s) + i;
+
+    if(addr % 2 != 0) {
+	return exception(cpu, LOAD_BUS);
+    }
+    
+    int16_t v = cpu_load16(cpu, addr);
+
+    set_reg(cpu, t, (uint32_t)v);
+}
+
+void op_nor(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t d = instr_d(instr);
+
+    uint32_t v = ~(get_reg(cpu, s) | get_reg(cpu, t));
+    set_reg(cpu, d, v);
+}
+
+void op_srav(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t d = instr_d(instr);
+
+    uint32_t v = (int32_t)get_reg(cpu, t) >> (get_reg(cpu, s) & 0x1f);
+    set_reg(cpu, d, v);
+}
+
+void op_srlv(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t d = instr_d(instr);
+
+    uint32_t v = get_reg(cpu, t) >> (get_reg(cpu, s) & 0x1f);
+    set_reg(cpu, d, v);
+}
+
+void op_multu(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+
+    uint64_t v = (uint64_t)t * (uint64_t)s;
+
+    cpu->hi = (uint32_t)(v >> 32);
+    cpu->lo = (uint32_t)v;
+}
+
+void op_xor(Cpu* cpu, Instruction instr) {
+    uint32_t s = instr_s(instr);
+    uint32_t t = instr_t(instr);
+    uint32_t d = instr_d(instr);
+
+    uint32_t v = get_reg(cpu, s) ^ get_reg(cpu, t);
+
+    set_reg(cpu, d, v);
+}
+
+void op_break(Cpu* cpu, Instruction instr) {
+    exception(cpu, BREAK);
+}
+
+void op_mult(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+
+    uint64_t v = (int64_t)t * (int64_t)s;
+
+    cpu->hi = (uint32_t)(v >> 32);
+    cpu->lo = (uint32_t)v;
+}
+
+void op_sub(Cpu* cpu, Instruction instr) {
+    uint32_t t = instr_t(instr);
+    uint32_t s = instr_s(instr);
+    uint32_t d = instr_d(instr);
+
+    if(check_overflow(cpu, get_reg(cpu, s), get_reg(cpu, t)) == 1) {
+	exception(cpu, OVERFLOW);
+    }
+    
+    uint32_t v = (int32_t)get_reg(cpu, s) - (int32_t)get_reg(cpu ,t);
+
+    set_reg(cpu, d, v);
+}
+
 void op_cop0(Cpu* cpu, Instruction instr) {
     uint32_t i = instr_s(instr);
-    printf("cop0 instr code: %x\n", i);
+    /* printf("cop0 instr code: %x\n", i); */
+    
     switch(i) {
-    case 0b000100:
+    case 0b00100:
 	op_mtc0(cpu, instr);
 	break;
-    case 0b000000:
+    case 0b00000:
 	op_mfc0(cpu, instr);
+	break;
+    case 0b10000:
+	i = instr_subfunction(instr);
+
+	switch(i) {
+	case 0b010000:
+	    op_rfe(cpu, instr);
+	    break;
+	default:
+	    printf("unknown cop0 10 instr: %x\n", i);
+	    exit(1);
+	}
 	break;
     default:
 	printf("unkonwn cop0 instr: %x\n", i);
 	exit(1);
     }
+}
+
+void op_cop1(Cpu* cpu, Instruction instr) {
+    exception(cpu, COPROCESSOR_ERROR);
+}
+
+void op_cop2(Cpu* cpu, Instruction instr) {
+    printf("unhandled gte\n");
+    exit(1);
+}
+
+void op_cop3(Cpu* cpu, Instruction instr) {
+    exception(cpu, COPROCESSOR_ERROR);
 }
 
 void op_mtc0(Cpu* cpu, Instruction instr) {
@@ -796,4 +1235,38 @@ void op_mfc0(Cpu* cpu, Instruction instr) {
 
     cpu->load[0] = cpu_r;
     cpu->load[1] = v;
+}
+
+void op_lwc0(Cpu* cpu, Instruction instr) {
+    exception(cpu, COPROCESSOR_ERROR);
+}
+
+void op_swc0(Cpu* cpu, Instruction instr) {
+    exception(cpu, COPROCESSOR_ERROR);
+}
+
+void op_lwc1(Cpu* cpu, Instruction instr) {
+    exception(cpu, COPROCESSOR_ERROR);
+}
+
+void op_swc1(Cpu* cpu, Instruction instr) {
+    exception(cpu, COPROCESSOR_ERROR);
+}
+
+void op_lwc2(Cpu* cpu, Instruction instr) {
+    printf("uhandled lwc2\n");
+    exit(1);
+}
+
+void op_swc2(Cpu* cpu, Instruction instr) {
+    printf("unhandled swc2\n");
+    exit(1);
+}
+
+void op_lwc3(Cpu* cpu, Instruction instr) {
+    exception(cpu, COPROCESSOR_ERROR);
+}
+
+void op_swc3(Cpu* cpu, Instruction instr) {
+    exception(cpu, COPROCESSOR_ERROR);
 }
