@@ -1,1 +1,1 @@
-gcc src/main.c -o build/ps1
+gcc src/main.c -Iinclude -o build/ps1 -lglfw

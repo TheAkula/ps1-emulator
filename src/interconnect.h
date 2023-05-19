@@ -8,13 +8,18 @@
 #include "bios.h"
 #include "range.h"
 #include "ram.h"
+#include "gpu.h"
 
-typedef struct {
+typedef struct Dma Dma;
+
+typedef struct Interconnect {
     Bios* bios;
-    Ram* ram;    
+    Ram* ram;
+    Dma* dma;
+    Gpu* gpu;
 } Interconnect;
 
-Interconnect* initialize_interconnect(Bios* bios, Ram* ram);
+Interconnect* initialize_interconnect(Bios* bios, Ram* ram, Dma* dma, Gpu* gpu);
 uint32_t intr_load32(Interconnect* intr, uint32_t addr);
 uint16_t intr_load16(Interconnect* intr, uint32_t addr);
 uint8_t intr_load8(Interconnect* intr, uint32_t addr);

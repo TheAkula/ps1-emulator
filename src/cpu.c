@@ -1146,6 +1146,7 @@ void op_cop1(Cpu* cpu, Instruction instr) {
 }
 
 void op_cop2(Cpu* cpu, Instruction instr) {
+    
     printf("unhandled gte\n");
     exit(1);
 }

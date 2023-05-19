@@ -1,5 +1,7 @@
 #include "interconnect.h"
 
+#include "dma.h"
+
 const uint32_t REGION_MASK[8] = {
     // KUSEG: 2048MB
     0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
@@ -22,14 +24,16 @@ Range EXPANSION_2 = { 0x1f802000, 66 };
 Range SCRATCHPAD = { 0x1f800000, 1024 };
 Range IRQ_CONTROL = { 0x1f801070, 8 };
 // TODO: check real value
-Range TIMERS = { 0x1f801100, 64 };
+Range TIMERS = { 0x1f801100, 50 };
 Range DMA = { 0x1f801080, 0x80 };
 Range GPU = {  0x1f801810, 8 };
 
-Interconnect* initialize_interconnect(Bios* bios, Ram* ram) {
+Interconnect* initialize_interconnect(Bios* bios, Ram* ram, Dma* dma, Gpu* gpu) {
     Interconnect* intr = malloc(sizeof(Interconnect));
     intr->bios = bios;
     intr->ram = ram;
+    intr->dma = dma;
+    intr->gpu = gpu;
     return intr;
 }
 
@@ -53,19 +57,30 @@ uint32_t intr_load32(Interconnect* intr, uint32_t addr) {
 	return 0;
     }
 
-    if(range_contains(DMA, addr) == 1) {
-	/* printf("unhandled dma load\n"); */
-	return 0;
+    if(range_contains(DMA, addr) == 1) {	
+	uint32_t offset = range_offset(DMA, addr);	
+	
+	return dma_reg(intr->dma, offset);
     }
     
     if(range_contains(GPU, addr) == 1) {
 	uint32_t offset = range_offset(GPU, addr);
 
 	if(offset == 4) {
-	    return 0x10000000;	    
+	    uint32_t v = gpu_gpustat(intr->gpu);
+	    return v;	    
 	}
+	
+	if(offset == 0) {
+	    return gpu_gpuread(intr->gpu);
+	}
+	
+	printf("unhandled gpu access: %x\n", addr);
+	exit(1);
+    }
 
-	return 0;
+    if(range_contains(TIMERS, addr) == 1) {
+	return 0x0;
     }
     
     printf("unhandled intr_load32 at address %x\n", addr);
@@ -164,12 +179,32 @@ void intr_store32(Interconnect* intr, uint32_t addr, uint32_t v) {
     }
 
     if(range_contains(DMA, addr) == 1) {
-	/* printf("unhandled dma store\n"); */
-	return;
+	uint32_t offset = range_offset(DMA, addr);	
+	return dma_set_reg(intr->dma, offset, v, intr);
     }    
     
     if(range_contains(GPU, addr) == 1) {
-	return;
+	uint32_t offset = range_offset(GPU, addr);
+
+	printf("gpu set %x %x\n", offset, v);
+	
+	printf("gpustat before %x\n", intr->gpu->gp1);
+	if(offset == 0) {
+	    /* gpu_set_gp0(intr->gpu, v); */
+	    gpu_gp0_command(intr->gpu, v);
+	    printf("gpustat after %x\n", intr->gpu->gp1);
+	    return;
+	}
+
+	if(offset == 4) {
+	    /* gpu_set_gp1(intr->gpu, v); */
+	    gpu_gp1_command(intr->gpu, v);
+	    printf("gpustat after %x\n", intr->gpu->gp1);
+	    return;
+	}
+	
+	printf("unhandled store32 gpu: %x\n", addr);
+	exit(1);
     }
 
     if(range_contains(TIMERS, addr) == 1) {
