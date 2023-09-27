@@ -8,7 +8,7 @@
 #include "bios.h"
 #include "range.h"
 #include "ram.h"
-#include "gpu.h"
+#include "gpu/gpu.h"
 
 typedef struct Dma Dma;
 

@@ -166,7 +166,7 @@ void dma_block(Dma* dma, DmaChannel dch, Interconnect* intr) {
 		exit(1);
 	}
 
-	printf("dma block start: %x\n", transfer_size);
+	/* printf("dma block start: %x\n", transfer_size); */
 	while (transfer_size > 0) {
 		transfer_size -= 1;
 		uint32_t cur_addr = addr & 0x1ffffc;
@@ -221,7 +221,7 @@ void dma_linked_list(Dma* dma, DmaChannel dch, Interconnect* intr) {
 
 	uint8_t dir = ch_dir(ch);
 
-	printf("linked list\n");
+	/* printf("linked list\n"); */
     
 	uint32_t addr = ch_base_address(ch) & 0x1ffffc;
 

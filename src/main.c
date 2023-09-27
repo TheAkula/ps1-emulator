@@ -8,7 +8,8 @@
 #include "cpu.c"
 #include "interconnect.c"
 #include "dma.c"
-#include "gpu.c"
+#include "gpu/gpu.c"
+#include "gpu/shader.c"
 #include "ram.h"
 #include "dma.h"
 
